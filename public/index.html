@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kalendarz Pracy (Klient-Serwer)</title>
+  <style>
+    /* Reset & Podstawowe Style */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      background-color: #0f172a; /* slate-900 */
+      color: #cbd5e1; /* slate-300 */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 32px 16px;
+      font-size: 16px;
+    }
+    button, input[type="time"], input[type="file"] {
+      font-family: inherit;
+      font-size: inherit;
+      border-radius: 0.375rem; /* rounded-md */
+      border: 1px solid transparent;
+      transition: all 0.2s ease-in-out;
+    }
+    button { cursor: pointer; }
+    input[type="time"] {
+      background-color: #334155; /* slate-700 */
+      color: #e2e8f0; /* slate-200 */
+      border: 1px solid #475569; /* slate-600 */
+      padding: 0.5rem 0.75rem;
+    }
+    input[type="time"]:focus {
+      outline: 2px solid transparent;
+      outline-offset: 2px;
+      border-color: #38bdf8; /* sky-500 */
+      box-shadow: 0 0 0 2px #38bdf8;
+    }
+    /* Ukryty input pliku */
+    .hidden-file-input { display: none; }
+
+    /* Główny Kontener Aplikacji */
+    .app-container {
+      background-color: #1e293b; /* slate-800 */
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); /* shadow-2xl */
+      border-radius: 0.75rem; /* rounded-xl */
+      padding: 1rem; /* p-4 */
+      width: 100%;
+      max-width: 56rem; /* max-w-3xl (około) */
+    }
+    @media (min-width: 640px) { /* sm: */
+      .app-container { padding: 1.5rem; /* sm:p-6 */ }
+    }
+
+    /* Nagłówek */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem; /* mb-6 */
+      padding-bottom: 1rem; /* pb-4 */
+      border-bottom: 1px solid #334155; /* border-slate-700 */
+    }
+    .app-title-group { display: flex; align-items: center; }
+    .app-title-icon { width: 2.5rem; height: 2.5rem; color: #38bdf8; /* sky-400 */ margin-right: 0.75rem; }
+    .app-title { font-size: 1.5rem; line-height: 2rem; font-weight: 700; color: #38bdf8; /* sky-400 */ }
+    @media (min-width: 640px) { /* sm: */
+      .app-title { font-size: 1.875rem; line-height: 2.25rem; /* sm:text-3xl */ }
+    }
+    
+    /* Sekcja Kalendarza */
+    .calendar-section { margin-bottom: 1.5rem; }
+    .calendar-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .calendar-controls button {
+      padding: 0.5rem 1rem;
+      background-color: #334155; /* slate-700 */
+      color: #e2e8f0; /* slate-200 */
+    }
+    .calendar-controls button:hover { background-color: #475569; /* slate-600 */ }
+    .calendar-month-year { font-size: 1.25rem; font-weight: 600; color: #7dd3fc; /* sky-300 */ }
+    
+    .calendar-grid-header, .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.25rem; /* gap-1 */
+      text-align: center;
+    }
+    .calendar-grid-header div { font-weight: 500; font-size: 0.75rem; color: #94a3b8; /* slate-400 */ padding: 0.25rem 0; }
+    .calendar-day-cell {
+      padding: 0.5rem;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: 1px solid #334155; /* slate-700 */
+      border-radius: 0.375rem; /* rounded-md */
+      transition: background-color 0.2s, transform 0.1s, box-shadow 0.1s;
+      font-size: 0.875rem; /* text-sm */
+    }
+    .calendar-day-cell:hover:not(.empty) { background-color: #475569; /* slate-600 */ }
+    .calendar-day-cell.empty { background-color: transparent; border-color: transparent; cursor: default; }
+    .calendar-day-cell.today { border-color: #38bdf8; /* sky-500 */ box-shadow: 0 0 0 1px #38bdf8; /* ring-1 ring-sky-500 */ }
+    .calendar-day-cell.selected {
+      background-color: #0284c7; /* sky-600 */
+      color: white;
+      transform: scale(1.05);
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); /* shadow-lg */
+    }
+    .calendar-day-cell.has-data:not(.selected) { background-color: #334155b3; /* slate-700/70 default for data */ }
+    .day-number { font-weight: 500; }
+    .day-number.selected { color: white; }
+    .day-number.today:not(.selected) { color: #38bdf8; /* sky-400 */ }
+    
+    .calendar-day-cell.weekend-day:not(.selected):not(.empty):not(.today) {
+      background-color: #2c3a51; /* Subtelny ciemniejszy odcień dla weekendów */
+    }
+    .calendar-day-cell.weekend-day.has-data:not(.selected):not(.empty):not(.today) {
+      background-color: #2c3a51b3; /* Weekend z danymi, nieco inny odcień */
+    }
+    .calendar-day-cell.weekend-day .day-number:not(.selected):not(.today) {
+      color: #94a3b8; /* Szary tekst dla numerów dni weekendowych */
+    }
+     .calendar-day-cell.weekend-day.today .day-number:not(.selected) { /* Dzień dzisiejszy na weekendzie */
+        color: #38bdf8; /* Zachowaj kolor sky-400 dla numeru dnia */
+    }
+
+    .day-hours-summary { font-size: 0.75rem; margin-top: 0.125rem; }
+    .day-hours-summary.selected { color: #bae6fd; /* sky-200 */ }
+    .day-hours-summary.has-data:not(.selected) { color: #4ade80; /* green-400 (for exactly standard time) */ }
+    .day-hours-summary.has-overtime:not(.selected) { color: #facc15; /* amber-400 (for positive overtime) */ }
+    .day-hours-summary.has-undertime:not(.selected) { color: #60a5fa; /* blue-400 (for negative overtime/undertime) */ }
+
+
+    /* Sekcja Wprowadzania Godzin */
+    .day-input-section {
+      margin: 2rem 0;
+      padding: 1rem;
+      background-color: #33415580; /* slate-700/50 */
+      border-radius: 0.5rem; /* rounded-lg */
+      box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06); /* shadow */
+    }
+    .day-input-title { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.75rem; color: #7dd3fc; /* sky-300 */ }
+    .time-inputs-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (min-width: 640px) { /* sm: */
+      .time-inputs-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .time-inputs-grid label { display: block; font-size: 0.875rem; font-weight: 500; color: #cbd5e1; /* slate-300 */ margin-bottom: 0.25rem; }
+    .time-inputs-grid input { width: 100%; }
+    
+    .day-action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    @media (min-width: 640px) { /* sm: */
+      .day-action-buttons { flex-direction: row; }
+    }
+    .day-action-buttons button {
+      flex-grow: 1;
+      padding: 0.5rem 1rem;
+      font-weight: 600;
+      box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); /* shadow */
+    }
+    .save-day-button { background-color: #0ea5e9; /* sky-600 */ color: white; }
+    .save-day-button:hover { background-color: #0284c7; /* sky-700 */ }
+    .clear-day-button { background-color: #64748b; /* slate-500 */ color: #0f172a; /* slate-900 */ }
+    .clear-day-button:hover { background-color: #94a3b8; /* slate-400 */ }
+
+    .daily-error { color: #f87171; /* red-400 */ font-size: 0.875rem; margin-top: 0.5rem; }
+    .daily-results {
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #475569; /* slate-600 */
+      font-size: 0.875rem;
+    }
+    .daily-results p { margin-bottom: 0.25rem; }
+    .daily-results .value { font-weight: 600; }
+    .total-value { color: #7dd3fc; /* sky-300 */ }
+    .regular-value { color: #4ade80; /* green-400 */ }
+    /* Overtime value styling */
+    .overtime-value.positive { color: #facc15; /* amber-400 */ }
+    .overtime-value.negative { color: #60a5fa; /* blue-400 */ }
+    .overtime-value.zero { color: #94a3b8; /* slate-400 */ }
+
+
+    /* Sekcja Podsumowania Miesięcznego */
+    .monthly-summary-section {
+      margin-top: 2rem;
+      padding: 1rem;
+      background-color: #3341554d; /* slate-700/30 */
+      border-radius: 0.5rem; /* rounded-lg */
+      box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06); /* shadow */
+    }
+    .monthly-summary-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem; color: #7dd3fc; /* sky-300 */ text-align: center; }
+    .monthly-summary-content div { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 1rem; }
+    .monthly-summary-content .label {}
+    .monthly-summary-content .value { font-weight: 700; }
+
+    /* Stopka */
+    .app-footer {
+      margin-top: 2.5rem; /* mt-10 */
+      padding-top: 1rem; /* pt-4 */
+      border-top: 1px solid #334155; /* border-slate-700 */
+      text-align: center;
+      font-size: 0.75rem; /* text-xs */
+      color: #64748b; /* slate-500 */
+    }
+    /* Klasa pomocnicza do ukrywania elementów */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <header class="app-header">
+      <div class="app-title-group">
+        <svg class="app-title-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+        </svg>
+        <h1 class="app-title" id="appTitle">Kalendarz Pracy</h1>
+      </div>
+    </header>
+
+    <section class="calendar-section">
+      <div class="calendar-controls">
+        <button id="prevMonthButton">&lt; Poprzedni</button>
+        <h2 id="currentMonthYear" class="calendar-month-year"></h2>
+        <button id="nextMonthButton">Następny &gt;</button>
+      </div>
+      <div id="calendarGridHeader" class="calendar-grid-header"></div>
+      <div id="calendarGrid" class="calendar-grid"></div>
+    </section>
+
+    <section id="dayInputSection" class="day-input-section hidden">
+      <h3 id="dayInputTitle" class="day-input-title"></h3>
+      <div class="time-inputs-grid">
+        <div>
+          <label for="dailyStartTime">Rozpoczęcie</label>
+          <input type="time" id="dailyStartTime" />
+        </div>
+        <div>
+          <label for="dailyEndTime">Zakończenie</label>
+          <input type="time" id="dailyEndTime" />
+        </div>
+      </div>
+      <div class="day-action-buttons">
+        <button id="saveDayButton" class="save-day-button">Zapisz</button>
+        <button id="clearDayButton" class="clear-day-button">Wyczyść dla dnia</button>
+      </div>
+      <p id="dailyError" class="daily-error hidden"></p>
+      <div id="dailyResults" class="daily-results hidden">
+        <p>Całkowity czas: <span id="dailyTotal" class="value total-value"></span></p>
+        <p>Godziny standardowe: <span id="dailyRegular" class="value regular-value"></span></p>
+        <p>Nadgodziny/Niedogodziny: <span id="dailyOvertime" class="value overtime-value"></span></p>
+      </div>
+    </section>
+
+    <section id="monthlySummarySection" class="monthly-summary-section">
+      <h3 id="monthlySummaryTitle" class="monthly-summary-title"></h3>
+      <div id="monthlySummaryContent" class="monthly-summary-content">
+        <div><span class="label">Całkowity czas pracy:</span> <span id="monthlyTotal" class="value total-value">00:00</span></div>
+        <div><span class="label">Godziny standardowe:</span> <span id="monthlyRegular" class="value regular-value">00:00</span></div>
+        <div><span class="label">Nadgodziny/Niedogodziny:</span> <span id="monthlyOvertime" class="value overtime-value zero">00:00</span></div>
+      </div>
+    </section>
+    
+    <footer class="app-footer">
+        <p id="footerInfo"></p>
+    </footer>
+  </div>
+
+<script>
+  const STANDARD_WORK_START_HOUR = 8; // 8 AM
+  const STANDARD_WORK_END_HOUR = 16; // 4 PM
+  const STANDARD_DAILY_HOURS_EXPECTED = STANDARD_WORK_END_HOUR - STANDARD_WORK_START_HOUR; // Expected 8 hours
+  const APP_TITLE = "Kalendarz Pracy";
+  const DAY_NAMES = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
+  const MONTH_NAMES = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+
+  let currentViewDate = new Date();
+  let selectedDateISO = null;
+  let workData = {}; // { "YYYY-MM-DD": { startTime, endTime, total, regular, overtime } }
+
+  // DOM Elements
+  const appTitleEl = document.getElementById('appTitle');
+  const prevMonthButton = document.getElementById('prevMonthButton');
+  const nextMonthButton = document.getElementById('nextMonthButton');
+  const currentMonthYearEl = document.getElementById('currentMonthYear');
+  const calendarGridHeaderEl = document.getElementById('calendarGridHeader');
+  const calendarGridEl = document.getElementById('calendarGrid');
+  const dayInputSectionEl = document.getElementById('dayInputSection');
+  const dayInputTitleEl = document.getElementById('dayInputTitle');
+  const dailyStartTimeInput = document.getElementById('dailyStartTime');
+  const dailyEndTimeInput = document.getElementById('dailyEndTime');
+  const saveDayButton = document.getElementById('saveDayButton');
+  const clearDayButton = document.getElementById('clearDayButton');
+  const dailyErrorEl = document.getElementById('dailyError');
+  const dailyResultsEl = document.getElementById('dailyResults');
+  const dailyTotalEl = document.getElementById('dailyTotal');
+  const dailyRegularEl = document.getElementById('dailyRegular');
+  const dailyOvertimeEl = document.getElementById('dailyOvertime');
+  const monthlySummaryTitleEl = document.getElementById('monthlySummaryTitle');
+  const monthlyTotalEl = document.getElementById('monthlyTotal');
+  const monthlyRegularEl = document.getElementById('monthlyRegular');
+  const monthlyOvertimeEl = document.getElementById('monthlyOvertime');
+  const footerInfoEl = document.getElementById('footerInfo');
+
+  // --- API Communication ---
+  const API_URL = 'http://localhost:3000/api/work-data';
+
+  const fetchData = async () => {
+    try {
+      const response = await fetch(API_URL);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      workData = await response.json();
+      renderCalendar();
+      updateMonthlySummary();
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      alert('Nie można załadować danych z serwera.');
+    }
+  };
+
+  const saveData = async (date, data) => {
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ date, data }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to save data');
+      }
+      return true;
+    } catch (error) {
+      console.error('Error saving data:', error);
+      alert('Błąd podczas zapisywania danych na serwerze.');
+      return false;
+    }
+  };
+
+  const deleteData = async (date) => {
+    try {
+      const response = await fetch(`${API_URL}/${date}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to delete data');
+      }
+      return true;
+    } catch (error) {
+      console.error('Error deleting data:', error);
+      alert('Błąd podczas usuwania danych na serwerze.');
+      return false;
+    }
+  };
+
+  // Helper Functions (unchanged from original)
+  const parseTimeToHours = (timeString) => {
+    if (!timeString) return null;
+    const [hours, minutes] = timeString.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours + minutes / 60;
+  };
+
+  const dateToISODateString = (date) => {
+      if (!date) return null;
+      return date.toISOString().split('T')[0];
+  };
+  
+  const formatDecimalHoursToHHMM = (decimalHours) => {
+    if (isNaN(parseFloat(decimalHours)) || decimalHours === null) {
+      return "00:00"; // Default for invalid or null inputs
+    }
+    
+    const sign = decimalHours < 0 ? "-" : "";
+    const absDecimalHours = Math.abs(decimalHours);
+
+    const totalMinutes = Math.round(absDecimalHours * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  };
+
+  // --- Application Logic (Modified to use API) ---
+
+  const renderCalendar = () => {
+    calendarGridEl.innerHTML = '';
+    currentMonthYearEl.textContent = `${MONTH_NAMES[currentViewDate.getMonth()]} ${currentViewDate.getFullYear()}`;
+
+    const year = currentViewDate.getFullYear();
+    const month = currentViewDate.getMonth();
+    
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    const numDaysInMonth = lastDayOfMonth.getDate();
+    
+    const dayOfWeekForFirst = firstDayOfMonth.getDay(); 
+    const emptyCellsCount = (dayOfWeekForFirst === 0) ? 6 : dayOfWeekForFirst - 1;
+
+    for (let i = 0; i < emptyCellsCount; i++) {
+      const emptyCell = document.createElement('div');
+      emptyCell.className = 'calendar-day-cell empty';
+      calendarGridEl.appendChild(emptyCell);
+    }
+
+    for (let day = 1; day <= numDaysInMonth; day++) {
+      const cell = document.createElement('div');
+      cell.className = 'calendar-day-cell';
+      const currentDateObj = new Date(year, month, day);
+      const isoDate = dateToISODateString(currentDateObj);
+      const dayOfWeek = currentDateObj.getDay(); 
+      
+      const dayNumberSpan = document.createElement('span');
+      dayNumberSpan.className = 'day-number';
+      dayNumberSpan.textContent = day;
+      cell.appendChild(dayNumberSpan);
+
+      if (isoDate === dateToISODateString(new Date())) {
+        cell.classList.add('today');
+        dayNumberSpan.classList.add('today');
+      }
+      if (isoDate === selectedDateISO) {
+        cell.classList.add('selected');
+        dayNumberSpan.classList.add('selected');
+      }
+      if (dayOfWeek === 0 || dayOfWeek === 6) { 
+        cell.classList.add('weekend-day');
+      }
+
+      if (workData[isoDate]) {
+        const dayData = workData[isoDate];
+        if (selectedDateISO !== isoDate) {
+             cell.classList.add('has-data');
+        }
+
+        const hoursSummarySpan = document.createElement('span');
+        hoursSummarySpan.className = 'day-hours-summary';
+        
+        if (selectedDateISO === isoDate) {
+            hoursSummarySpan.classList.add('selected');
+        } else {
+            if (dayData.overtime > 0) {
+                hoursSummarySpan.classList.add('has-overtime');
+            } else if (dayData.overtime < 0) {
+                hoursSummarySpan.classList.add('has-undertime');
+            } else { 
+                hoursSummarySpan.classList.add('has-data');
+            }
+        }
+        hoursSummarySpan.textContent = formatDecimalHoursToHHMM(dayData.total);
+        cell.appendChild(hoursSummarySpan);
+      }
+
+      cell.addEventListener('click', () => handleDayClick(isoDate));
+      calendarGridEl.appendChild(cell);
+    }
+    updateMonthlySummary();
+  };
+  
+  const renderCalendarHeader = () => {
+    calendarGridHeaderEl.innerHTML = '';
+    DAY_NAMES.forEach(name => {
+        const headerCell = document.createElement('div');
+        headerCell.textContent = name;
+        calendarGridHeaderEl.appendChild(headerCell);
+    });
+  };
+
+  const handleDayClick = (isoDate) => {
+    selectedDateISO = isoDate;
+    dayInputSectionEl.classList.remove('hidden');
+    const dateObj = new Date(isoDate + "T00:00:00"); 
+    dayInputTitleEl.textContent = `Godziny dla: ${dateObj.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}`;
+    
+    dailyErrorEl.classList.add('hidden');
+    dailyErrorEl.textContent = '';
+    dailyResultsEl.classList.add('hidden');
+
+    if (workData[isoDate]) {
+      dailyStartTimeInput.value = workData[isoDate].startTime;
+      dailyEndTimeInput.value = workData[isoDate].endTime;
+      displayDailyResults(workData[isoDate]);
+    } else {
+      dailyStartTimeInput.value = '08:00';
+      dailyEndTimeInput.value = '16:00';
+    }
+    renderCalendar(); 
+  };
+
+  const calculateDailyHours = (startStr, endStr) => {
+    const start = parseTimeToHours(startStr);
+    const end = parseTimeToHours(endStr);
+
+    if (start === null || end === null) {
+      return { error: "Proszę podać prawidłowy czas (format HH:MM)." };
+    }
+    if (end <= start) {
+      return { error: "Czas zakończenia musi być późniejszy niż czas rozpoczęcia." };
+    }
+
+    const totalWorkedHours = end - start;
+    const regularHours = Math.min(totalWorkedHours, STANDARD_DAILY_HOURS_EXPECTED);
+    const overtimeHours = totalWorkedHours - STANDARD_DAILY_HOURS_EXPECTED;
+    
+    return {
+      total: totalWorkedHours,
+      regular: regularHours,
+      overtime: overtimeHours,
+    };
+  };
+
+  const displayDailyResults = (results) => {
+      if (!results || results.error) { 
+          dailyResultsEl.classList.add('hidden');
+          if (results && results.error) { 
+            dailyErrorEl.textContent = results.error;
+            dailyErrorEl.classList.remove('hidden');
+          }
+          return;
+      }
+      dailyErrorEl.classList.add('hidden'); 
+      dailyErrorEl.textContent = '';
+
+      dailyTotalEl.textContent = formatDecimalHoursToHHMM(results.total);
+      dailyRegularEl.textContent = formatDecimalHoursToHHMM(results.regular);
+      dailyOvertimeEl.textContent = formatDecimalHoursToHHMM(results.overtime);
+      
+      let overtimeClass = '';
+      if (results.overtime > 0) overtimeClass = 'positive';
+      else if (results.overtime < 0) overtimeClass = 'negative';
+      else overtimeClass = 'zero';
+      dailyOvertimeEl.className = `value overtime-value ${overtimeClass}`;
+      
+      dailyResultsEl.classList.remove('hidden');
+  };
+
+  const handleSaveDay = async () => {
+    if (!selectedDateISO) {
+      dailyErrorEl.textContent = "Nie wybrano dnia.";
+      dailyErrorEl.classList.remove('hidden');
+      return;
+    }
+    const calculationResult = calculateDailyHours(dailyStartTimeInput.value, dailyEndTimeInput.value);
+
+    if (calculationResult.error) {
+      displayDailyResults(calculationResult); 
+    } else {
+      const dataToSave = {
+        ...calculationResult,
+        startTime: dailyStartTimeInput.value,
+        endTime: dailyEndTimeInput.value,
+      };
+      
+      const success = await saveData(selectedDateISO, dataToSave);
+      if (success) {
+        workData[selectedDateISO] = dataToSave;
+        displayDailyResults(calculationResult);
+        renderCalendar(); 
+        updateMonthlySummary();
+      }
+    }
+  };
+
+  const handleClearDay = async () => {
+    if (!selectedDateISO) return;
+    const success = await deleteData(selectedDateISO);
+    if (success) {
+        delete workData[selectedDateISO];
+        dailyStartTimeInput.value = '08:00';
+        dailyEndTimeInput.value = '16:00';
+        dailyResultsEl.classList.add('hidden');
+        dailyErrorEl.classList.add('hidden');
+        dailyErrorEl.textContent = '';
+        renderCalendar();
+        updateMonthlySummary();
+    }
+  };
+
+  const updateMonthlySummary = () => {
+    let total = 0, regular = 0, overtime = 0;
+    const year = currentViewDate.getFullYear();
+    const month = currentViewDate.getMonth();
+
+    monthlySummaryTitleEl.textContent = `Podsumowanie za ${MONTH_NAMES[month]}`;
+
+    for (const isoDate in workData) {
+      const entryDate = new Date(isoDate + "T00:00:00");
+      if (entryDate.getFullYear() === year && entryDate.getMonth() === month) {
+        total += workData[isoDate].total;
+        regular += workData[isoDate].regular;
+        overtime += workData[isoDate].overtime;
+      }
+    }
+    monthlyTotalEl.textContent = formatDecimalHoursToHHMM(total);
+    monthlyRegularEl.textContent = formatDecimalHoursToHHMM(regular);
+    monthlyOvertimeEl.textContent = formatDecimalHoursToHHMM(overtime);
+
+    let monthlyOvertimeClass = '';
+    if (overtime > 0) monthlyOvertimeClass = 'positive';
+    else if (overtime < 0) monthlyOvertimeClass = 'negative';
+    else monthlyOvertimeClass = 'zero';
+    monthlyOvertimeEl.className = `value overtime-value ${monthlyOvertimeClass}`;
+  };
+
+  // Event Listeners
+  prevMonthButton.addEventListener('click', () => {
+    currentViewDate.setMonth(currentViewDate.getMonth() - 1);
+    renderCalendar();
+  });
+  nextMonthButton.addEventListener('click', () => {
+    currentViewDate.setMonth(currentViewDate.getMonth() + 1);
+    renderCalendar();
+  });
+  saveDayButton.addEventListener('click', handleSaveDay);
+  clearDayButton.addEventListener('click', handleClearDay);
+  
+  // Initialization
+  const initializeApp = () => {
+    appTitleEl.textContent = APP_TITLE;
+    footerInfoEl.textContent = `Standardowa praca: ${String(STANDARD_WORK_START_HOUR).padStart(2,'0')}:00 - ${String(STANDARD_WORK_END_HOUR).padStart(2,'0')}:00 (${STANDARD_DAILY_HOURS_EXPECTED}h). Dane zapisywane na serwerze.`;
+    renderCalendarHeader();
+    fetchData(); // Initial data load
+  };
+
+  initializeApp();
+</script>
+</body>
+</html>
